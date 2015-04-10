@@ -271,10 +271,13 @@ class DoxyClang(object):
             fp.write(buf)
             self.parse(fname, dname)
         finally:
-            pass
-            #os.unlink(fname)
-            #os.unlink(cmdname)
-            #os.rmdir(dname)
+            try:
+                # may have not been actually created
+                os.unlink(fname)
+            except:
+                pass
+            os.unlink(cmdname)
+            os.rmdir(dname)
 
     def get_func(self, line):
         if not self._doxyfile:
