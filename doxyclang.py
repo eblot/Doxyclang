@@ -106,6 +106,10 @@ class Parser(object):
         for n, l, m, d in self._get_next_line(fp):
             filename = self._extract_filename(m, filename)
             stmt = m.group('stmt')
+            # there might be a clever way to avoid creating a default object
+            # each time we do not care about the statement. Using None could
+            # be a solution, although the tree would be broken as the stack
+            # would lose track of useful objects
             cls = self.get_clang_class(stmt) or ClangDefaultObject
             obj = cls(self, m, filename)
             depth = len(stack)
@@ -126,26 +130,21 @@ class Parser(object):
                 if move > 1:
                     print("ERROR: too deep")
                     break
-                # the parent of the child is the deepest element on the stack
-                parent = stack[-1]
-                parent.add_child(obj)
-                if show_tree:
-                    print("-------------- Bd:%s Child:%s" % (parent, obj))
-                # the new deepest element of the stack is now the new child
-                stack.append(obj)
-                continue
-            # want to retrieve the parent
-            while move < 0:
+            else:
+                # want to retrieve the parent
+                while move < 0:
+                    stack.pop()
+                    move += 1
+                # we want to be a sibling, so get our parent, and 
+                # add a new child
                 stack.pop()
-                move += 1
-            # we want to be a sibling, so get our parent, and add a new child
-            stack.pop()
+            # the parent of the child is the deepest element on the stack
             parent = stack[-1]
             parent.add_child(obj)
+            # the new deepest element of the stack is now the new child
             stack.append(obj)
             if show_tree:
-                print("-------------- Bu:%s Child:%s" % (parent, obj))
-        # print(stack)
+                print("-------------- B:%s Child:%s" % (parent, obj))
         # stack[0].dump(0)
         self._root = stack[0]
 
