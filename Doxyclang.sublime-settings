@@ -22,4 +22,7 @@
     // the specified build path component should be considered to find the
     // clang build file
     "build_path_down": 4,
+
+    // Show debug traces in the console
+    "debug": false,
 }

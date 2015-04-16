@@ -38,7 +38,7 @@ class Parser(object):
     LINE_RE = r'(?:line:(?P<line>\d+:\d+))'
     COL_RE = r'(?:col:(?P<col>\d+))'
     ISLOC_RE = r'<invalid sloc>'
-    LOC1_RE = _alt(PATH_RE, LINE_RE, COL_RE, ISLOC_RE)
+    LOC1_RE = _alt(PATH_RE, LINE_RE, COL_RE, ISLOC_RE, SCRATCH_RE)
     LOC_RE = _rx(LOC1_RE, 1) + r'(,\s' + _rx(LOC1_RE, 2) + r')?'
     RANGE_RE = r'<' + _alt(SCRATCH_RE, LOC_RE) + r'>'
     XRANGE_RE = r'(?:\s' + _rx(LOC1_RE, 3) + ')?'
@@ -190,7 +190,8 @@ class Parser(object):
 
     def _exec_clang_check(self, filename, cmddir):
         args = [self._clang_check, '--ast-dump', '-p', cmddir, filename]
-        # print (' '.join(args))
+        if self._debug:
+            print(' '.join(args))
         return Popen(args, stdout=PIPE, stderr=PIPE, bufsize=-1).stdout
 
     @classmethod
@@ -615,7 +616,8 @@ class DoxyclangCommand(sublime_plugin.TextCommand):
             if not build_path:
                 build_path = self._find_build_command_dir(
                     _context.build_path_comp, Parser.CMD_JSON_NAME,
-                    int(_context.build_path_up), int(_context.build_path_down))
+                    int(_context.build_path_up), int(_context.build_path_down),
+                    _context.debug)
             if not build_path:
                 print("Cannot find clang build path", file=sys.stderr)
                 return
@@ -624,7 +626,7 @@ class DoxyclangCommand(sublime_plugin.TextCommand):
                 print("Invalid clang-check tool %s" % clang_check,
                       file=sys.stderr)
                 return
-            cp = Parser(clang_check, build_path, True)
+            cp = Parser(clang_check, build_path, _context.debug)
             cp.parse_buffer(filename, buf)
             _context.cp = cp
             _context.line = line
@@ -700,10 +702,13 @@ class DoxyclangCommand(sublime_plugin.TextCommand):
                                                        self.view.size()))
         return ''.join((before_insert, after_insert))
 
-    def _find_build_command_dir(self, dircomp, bldfile, maxup, maxdown):
+    def _find_build_command_dir(self, dircomp, bldfile, maxup, maxdown, debug):
         # start from the current ST folder
         folder = self.view.window().extract_variables()['folder']
         current = folder
+
+        if debug:
+            print("bld: folder %s" % folder)
 
         # move up to the maximum defined level to search top-down 
         while maxup > 0:
@@ -712,6 +717,9 @@ class DoxyclangCommand(sublime_plugin.TextCommand):
                 current = parent
             maxup -= 1
         current = os.path.normpath(current)
+
+        if debug:
+            print("bld: start from %s" % current)
 
         # get all directories that contains the specified dircomp
         dcompref = [(d, len(os.path.commonprefix((folder, d)))) for d in
@@ -722,10 +730,17 @@ class DoxyclangCommand(sublime_plugin.TextCommand):
         if not dbest:
             return None
 
+        if debug:
+            print("bld: dcompref %s" % dcompref)
+            print("bld: dbest %s" % dbest)
+
         # find all clang build files within the selected directory
         dref = list(self.enumerate_file_candidates(dbest, bldfile, maxdown))
         if not dref:
             return None
+
+        if debug:
+            print("bld: dref %s" % dref)
 
         # remove common part from candidates
         common = self.common_path(dref)
@@ -746,6 +761,10 @@ class DoxyclangCommand(sublime_plugin.TextCommand):
         if not dirs:
             return None
         best = os.path.join(common,dirs[0])
+
+        if debug:
+            print("bld: dirs %s" % dirs)
+            print("bld: best %s" % best)
 
         # hope the heuristic is fine :-)
         return best
