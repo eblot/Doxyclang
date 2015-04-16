@@ -567,6 +567,15 @@ class DoxyclangContext(object):
         self.cp = None
         self.choice = -1
 
+    def _get_settings(self):
+        settings = sublime.load_settings("Doxyclang.sublime-settings")
+        return settings
+
+    def __getattr__(self, name):
+        if name.startswith('_'):
+            return self.__getattribute__(name)
+        return self._get_settings().get(name)
+
 _context = DoxyclangContext()
 
 class DoxyclangCommand(sublime_plugin.TextCommand):
@@ -576,6 +585,9 @@ class DoxyclangCommand(sublime_plugin.TextCommand):
     CRE = re.compile(RE)
 
     def is_enabled(self):
+        global _context
+        if not bool(_context.enabled):
+            return False
         extension = self.view.window().extract_variables()['file_extension']
         return extension in ('c','h')
 
@@ -599,14 +611,20 @@ class DoxyclangCommand(sublime_plugin.TextCommand):
             # a whole file if the very same comment block is being edited
             # check start/end lines of the comment block, and detect if it is
             # worth spawning a new parser at it.
-            build_path = self._find_build_command_dir('build',
-                                                      Parser.CMD_JSON_NAME,
-                                                      4, 4)
+            build_path = _context.build_path
+            if not build_path:
+                build_path = self._find_build_command_dir(
+                    _context.build_path_comp, Parser.CMD_JSON_NAME,
+                    int(_context.build_path_up), int(_context.build_path_down))
             if not build_path:
                 print("Cannot find clang build path", file=sys.stderr)
                 return
-            cp = Parser('/usr/local/bin/arm-elf32-minix-clang-check',
-                        build_path, True)
+            clang_check = _context.clang_check
+            if not os.path.isfile(clang_check):
+                print("Invalid clang-check tool %s" % clang_check,
+                      file=sys.stderr)
+                return
+            cp = Parser(clang_check, build_path, True)
             cp.parse_buffer(filename, buf)
             _context.cp = cp
             _context.line = line
