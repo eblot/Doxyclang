@@ -578,38 +578,38 @@ class DoxyclangCommand(sublime_plugin.TextCommand):
          r'(?:\*\s+@(?P<def>return|param)(?:\[(?:in|out|in,out)\])?\s(?P<arg>\w+)))'
     CRE = re.compile(RE)
 
-    def _read_line(self, point):
-        if (point >= self.view.size()):
-            return
-        return self.view.substr(self.view.line(point))
-
-    def _get_document_text(self, point):
-        before_insert = self.view.substr(sublime.Region(0, point-3))
-        after_insert = self.view.substr(sublime.Region(point, 
-                                                       self.view.size()))
-        return ''.join((before_insert, after_insert))
-
     def is_enabled(self):
         extension = self.view.window().extract_variables()['file_extension']
-        return extension in ('c',)
+        return extension in ('c','h')
 
     def run(self, edit):
         if not self.is_enabled():
             return '\n'
+        # wish to find a better way to maintain a context than an ugly global
+        # object
         global _context
         point = self.view.sel()[0].begin()
         linestr = self._read_line(point)
         mo = self.CRE.match(linestr)
         if not mo:
-            return '\n'
+            return
         filename = self.view.file_name()
         line, col = self.view.rowcol(point)
         line += 1  # first line starts at 0
         buf = self._get_document_text(point)
         if _context.line != line or _context.filename != filename:
+            # maybe this can be optimized: there is no point reparsing
+            # a whole file if the very same comment block is being edited
+            # check start/end lines of the comment block, and detect if it is
+            # worth spawning a new parser at it.
+            build_path = self._find_build_command_dir('build',
+                                                      Parser.CMD_JSON_NAME,
+                                                      4, 4)
+            if not build_path:
+                print("Cannot find clang build path", file=sys.stderr)
+                return
             cp = Parser('/usr/local/bin/arm-elf32-minix-clang-check',
-                    '/Users/eblot/Sources/Neotion/ndk/sandboxes/t29/build/minix',
-                    True)
+                        build_path, True)
             cp.parse_buffer(filename, buf)
             _context.cp = cp
             _context.line = line
@@ -639,6 +639,94 @@ class DoxyclangCommand(sublime_plugin.TextCommand):
             newline = ' '.join((mo.string[:mo.end('arg')], hint))
             region = self.view.line(point)
             self.view.replace(edit, region, newline)
+
+    @staticmethod
+    def enumerate_dir_candidates(topdir, dircomp, depth):
+        """Find all directories whose last component matches"""
+        sdepth = topdir.count(os.sep)
+        for dirpath, dirnames, filenames in os.walk(topdir):
+            if dircomp in dirnames:
+                yield os.path.join(dirpath, dircomp)
+            ddepth = dirpath.count(os.sep)
+            if (ddepth-sdepth) >= depth:
+                dirnames[:] = []
+            else:
+                dirnames[:] = [d for d in dirnames
+                               if not d.startswith('.')]
+
+    @staticmethod
+    def enumerate_file_candidates(topdir, filecomp, depth):
+        """Find all directories that contain a specified file"""
+        sdepth = topdir.count(os.sep)
+        for dirpath, dirnames, filenames in os.walk(topdir):
+            if filecomp in filenames:
+                yield dirpath
+            ddepth = dirpath.count(os.sep)
+            if (ddepth-sdepth) >= depth:
+                dirnames[:] = []
+            else:
+                dirnames[:] = [d for d in dirnames
+                               if not d.startswith('.')]
+
+    @staticmethod
+    def common_path(directories):
+        """commonprefix working on directory names, not on chars"""
+        norm_paths = [os.path.abspath(p) + os.sep for p in directories]
+        return os.path.dirname(os.path.commonprefix(norm_paths))
+
+    def _read_line(self, point):
+        if (point >= self.view.size()):
+            return
+        return self.view.substr(self.view.line(point))
+
+    def _get_document_text(self, point):
+        before_insert = self.view.substr(sublime.Region(0, point-3))
+        after_insert = self.view.substr(sublime.Region(point,
+                                                       self.view.size()))
+        return ''.join((before_insert, after_insert))
+
+    def _find_build_command_dir(self, dircomp, bldfile, maxup, maxdown):
+        folder = self.view.window().extract_variables()['folder']
+        current = folder
+        while maxup > 0:
+            parent = os.path.join(current, os.pardir)
+            if os.path.isdir(parent):
+                current = parent
+            maxup -= 1
+        current = os.path.normpath(current)
+
+        dcompref = [(d, len(os.path.commonprefix((folder, d)))) for d in
+                    self.enumerate_dir_candidates(current, dircomp, maxdown)]
+        dbest = sorted(dcompref, key=lambda x: -x[1])[0][0]
+        if not dbest:
+            return None
+
+        dref = list(self.enumerate_file_candidates(dbest, bldfile, maxdown))
+        if not dref:
+            return None
+
+        # remove common part from candidates
+        common = self.common_path(dref)
+        cmnlen = len(common)
+        dist = ['%s' % d[cmnlen:] for d in dref]
+
+        # reverse path order for all candidates
+        rdist = [os.sep.join(reversed(d.split(os.sep))) for d in dist]
+
+        # reverse path order for folder
+        rfolder = os.sep.join(reversed(folder.split(os.sep)))
+
+        # weigth each candidate, based on how close it is to the folder
+        weights = [(d, rfolder.find(d)) for d in rdist]
+
+        # find the best candidate
+        dirs = [d[0] for d in sorted(weights, key=lambda x: x[1]) if d[1] >= 0]
+        if not dirs:
+            return None
+        best = os.path.join(common,dirs[0])
+
+        # hope the heuristic is fine :-)
+        return best
 
 
 #if __name__ == '__main__':
