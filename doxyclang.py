@@ -61,75 +61,6 @@ class Parser(object):
         self._build_path = build_path
         self._parameters = {}
 
-    def _get_next_line(self, fp):
-        for n, l in enumerate(fp, start=1):
-            # Python3, a byte stream is received but we need to handle strings
-            # get rid of trailing space and line feed chars
-            l = l.decode('utf8').rstrip()
-            # get rid of ANSI color markers
-            l = self.ANSI_CRE.sub('', l)
-            # compute the depth of a statement
-            mo = self.LINE_CRE.match(l)
-            if not mo:
-                if self._debug:
-                    print("Wrong format: %s" % l,
-                          file=sys.stderr)
-                continue
-            depthstr = mo.group('depth')
-            if depthstr:
-                depthstr.replace('`', '|').count('|'), l
-                depth = len(mo.group('depth')) // 2
-            else:
-                depth = 0
-            stmt = mo.group('stmt')
-            yield n, l, mo, depth
-
-    def _exec_clang_check(self, filename, cmddir):
-        args = [self._clang_check, '--ast-dump', '-p', cmddir, filename]
-        # print (' '.join(args))
-        return Popen(args, stdout=PIPE, stderr=PIPE, bufsize=-1).stdout
-
-    @classmethod
-    def _build_json(cls, json, orig, tmp):
-        """A real JSON parser would be nice, but try to keep this simple for
-           now"""
-        cre = re.compile(r'(?m)\{([^}]+)\}')
-        match = None
-        desc = None
-        for mo in cre.finditer(json):
-            newdesc = {}
-            for kv in mo.group(1).split(','):
-                k, v = kv.strip('\r\n').split(':')
-                k = k.strip().strip('"')
-                if k == 'command':
-                    v = v.strip().strip('"').replace(orig, tmp)
-                    # Hack: to not execute post commands
-                    # TODO: should be a setting
-                    v = v.split('&&')[0].strip()
-                    v = '"%s"' % v
-                if k == 'file':
-                    sv = v.strip().strip('"')
-                    if sv == orig:
-                        v = '"%s"' % tmp
-                        match = True
-                newdesc[k] = v
-            if match:
-                desc = newdesc
-                break
-        if desc:
-            lines = []
-            for k in desc:
-                lines.append('  "%s": %s' % (k, desc[k]))
-            return '[\n{\n%s\n}\n]' % ',\n'.join(lines)
-
-    def _build_cmd_file(self, jsondst, srcname, tmpname):
-        jsonsrc = os.path.join(self._build_path, self.CMD_JSON_NAME)
-        with open(jsonsrc, 'rt') as json:
-            data = json.read()
-        newdata = self._build_json(data, srcname, tmpname)
-        with open(jsondst, 'wt') as json:
-            json.write(newdata)
-
     def parse(self, filename, cmddir):
         with self._exec_clang_check(filename, cmddir) as fp:
             self.build_tree(fp)
@@ -235,6 +166,75 @@ class Parser(object):
             self._parameters = self.collect_parameters()
         return self._parameters
 
+    def _get_next_line(self, fp):
+        for n, l in enumerate(fp, start=1):
+            # Python3, a byte stream is received but we need to handle strings
+            # get rid of trailing space and line feed chars
+            l = l.decode('utf8').rstrip()
+            # get rid of ANSI color markers
+            l = self.ANSI_CRE.sub('', l)
+            # compute the depth of a statement
+            mo = self.LINE_CRE.match(l)
+            if not mo:
+                if self._debug:
+                    print("Wrong format: %s" % l,
+                          file=sys.stderr)
+                continue
+            depthstr = mo.group('depth')
+            if depthstr:
+                depthstr.replace('`', '|').count('|'), l
+                depth = len(mo.group('depth')) // 2
+            else:
+                depth = 0
+            stmt = mo.group('stmt')
+            yield n, l, mo, depth
+
+    def _exec_clang_check(self, filename, cmddir):
+        args = [self._clang_check, '--ast-dump', '-p', cmddir, filename]
+        # print (' '.join(args))
+        return Popen(args, stdout=PIPE, stderr=PIPE, bufsize=-1).stdout
+
+    @classmethod
+    def _build_json(cls, json, orig, tmp):
+        """A real JSON parser would be nice, but try to keep this simple for
+           now"""
+        cre = re.compile(r'(?m)\{([^}]+)\}')
+        match = None
+        desc = None
+        for mo in cre.finditer(json):
+            newdesc = {}
+            for kv in mo.group(1).split(','):
+                k, v = kv.strip('\r\n').split(':')
+                k = k.strip().strip('"')
+                if k == 'command':
+                    v = v.strip().strip('"').replace(orig, tmp)
+                    # Hack: to not execute post commands
+                    # TODO: should be a setting
+                    v = v.split('&&')[0].strip()
+                    v = '"%s"' % v
+                if k == 'file':
+                    sv = v.strip().strip('"')
+                    if sv == orig:
+                        v = '"%s"' % tmp
+                        match = True
+                newdesc[k] = v
+            if match:
+                desc = newdesc
+                break
+        if desc:
+            lines = []
+            for k in desc:
+                lines.append('  "%s": %s' % (k, desc[k]))
+            return '[\n{\n%s\n}\n]' % ',\n'.join(lines)
+
+    def _build_cmd_file(self, jsondst, srcname, tmpname):
+        jsonsrc = os.path.join(self._build_path, self.CMD_JSON_NAME)
+        with open(jsonsrc, 'rt') as json:
+            data = json.read()
+        newdata = self._build_json(data, srcname, tmpname)
+        with open(jsondst, 'wt') as json:
+            json.write(newdata)
+
     @classmethod
     def _extract_filename(cls, mo, default):
         # Ugly heuristic, there should be a better way to find the exact
@@ -271,7 +271,6 @@ class FileContainer(object):
         if line in self._functions:
             return self._functions[line]
         for l in sorted(self._functions):
-            # print (l, self._functions[l].name)
             if l < line:
                 continue
             if l > line + self.MAX_SEEK_LINE:
@@ -494,7 +493,6 @@ class ClangParamCommandComment(ClangObject):
         super(ClangParamCommandComment, self).__init__(parser, mo, filename)
         pcmo = self.CRE.match(mo.group('right'))
         if not pcmo:
-            # print("PCMO error %s" % mo.group('right'), file=sys.stderr)
             self.name = ''
             self.pos = -1
             self.dir = ''
@@ -686,8 +684,11 @@ class DoxyclangCommand(sublime_plugin.TextCommand):
         return ''.join((before_insert, after_insert))
 
     def _find_build_command_dir(self, dircomp, bldfile, maxup, maxdown):
+        # start from the current ST folder
         folder = self.view.window().extract_variables()['folder']
         current = folder
+
+        # move up to the maximum defined level to search top-down 
         while maxup > 0:
             parent = os.path.join(current, os.pardir)
             if os.path.isdir(parent):
@@ -695,12 +696,16 @@ class DoxyclangCommand(sublime_plugin.TextCommand):
             maxup -= 1
         current = os.path.normpath(current)
 
+        # get all directories that contains the specified dircomp
         dcompref = [(d, len(os.path.commonprefix((folder, d)))) for d in
                     self.enumerate_dir_candidates(current, dircomp, maxdown)]
+        # select the one that closely looks like the original folder, so
+        # that candidates for other build component are not considered
         dbest = sorted(dcompref, key=lambda x: -x[1])[0][0]
         if not dbest:
             return None
 
+        # find all clang build files within the selected directory
         dref = list(self.enumerate_file_candidates(dbest, bldfile, maxdown))
         if not dref:
             return None
