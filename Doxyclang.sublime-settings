@@ -3,8 +3,7 @@
     "enabled": true,
 
     // path to the clang-check binary tool
-    //"clang_check": "clang-check", 
-    "clang_check": "/usr/local/bin/arm-elf32-minix-clang-check",
+    "clang_check": "clang-check",
 
     // if empty, use an heuristic to locate the clang build JSON file, that is
     // compile_commands.json.; otherwise specify the actual directory that
