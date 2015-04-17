@@ -1,0 +1,28 @@
+{
+    // guess what
+    "enabled": true,
+
+    // path to the clang-check binary tool
+    "clang_check": "clang-check",
+
+    // if empty, use an heuristic to locate the clang build JSON file, that is
+    // compile_commands.json.; otherwise specify the actual directory that
+    // contains this file
+    "build_path": "",
+
+    // when build-path heuristic is active, define an explicit directory name
+    // from which the search for a clang build file should be started
+    "build_path_comp": "build",
+
+    // when build-path heuristic is active, specify how many directories up
+    // from the project folder to start looking for the clang build file
+    "build_path_up": 4,
+
+    // when build-path heuristic is active, specify how many directories down
+    // the specified build path component should be considered to find the
+    // clang build file
+    "build_path_down": 4,
+
+    // Show debug traces in the console
+    "debug": false,
+}

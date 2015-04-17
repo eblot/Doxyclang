@@ -1,0 +1,17 @@
+[
+    { "keys": ["enter"], "command": "doxyclang", "context" :
+        [
+            { "key": "setting.auto_indent", "operator": "equal",          "operand": true },
+            { "key": "preceding_text",      "operator": "regex_contains", "operand": "^\\s*\\/\\*{2}$", "match_all": true }
+        ]
+    },
+    { "keys": ["tab"], "command": "doxyclang", "context" :
+        [
+            { "key": "setting.auto_indent", "operator": "equal",          "operand": true },
+            { "key": "preceding_text",      "operator": "regex_contains", "operand": "^\\s*\\*\\s+@(param|return)", "match_all": true }
+        ]
+    },
+]
+
+
+
