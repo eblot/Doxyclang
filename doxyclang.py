@@ -79,7 +79,6 @@ class Parser(object):
                 fp.write(buf)
             self.parse(fname, dname)
         finally:
-            return
             try:
                 # may have not been actually created
                 os.unlink(fname)
@@ -567,6 +566,20 @@ class DoxyclangContext(object):
         self.line = 0
         self.cp = None
         self.choice = -1
+        if self.build_path:
+            self.buildpaths = self.build_path
+        else:
+            self.buildpaths = {}
+
+    def get_build_path(self, filename):
+        if isinstance(self.buildpaths, str):
+            return self.buildpaths
+        return self.buildpaths.get(filename, None)
+
+    def set_build_path(self, filename, path):
+        if isinstance(self.buildpaths, str):
+            return
+        self.buildpaths[filename] = path
 
     def _get_settings(self):
         settings = sublime.load_settings("Doxyclang.sublime-settings")
@@ -612,12 +625,16 @@ class DoxyclangCommand(sublime_plugin.TextCommand):
             # a whole file if the very same comment block is being edited
             # check start/end lines of the comment block, and detect if it is
             # worth spawning a new parser at it.
-            build_path = _context.build_path
+            build_path = _context.get_build_path(filename)
             if not build_path:
                 build_path = self._find_build_command_dir(
                     _context.build_path_comp, Parser.CMD_JSON_NAME,
                     int(_context.build_path_up), int(_context.build_path_down),
                     _context.debug)
+                if _context.debug:
+                    print("Build path for %s is %s" % (filename, build_path))
+                if build_path:
+                    _context.set_build_path(filename, build_path)
             if not build_path:
                 print("Cannot find clang build path", file=sys.stderr)
                 return
